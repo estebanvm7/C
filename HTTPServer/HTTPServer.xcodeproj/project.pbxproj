@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		5B0F6AEC1AD0628E009798A8 /* threadpool.c in Sources */ = {isa = PBXBuildFile; fileRef = 5B0F6AEA1AD0628E009798A8 /* threadpool.c */; };
+		5B0F6AEF1AD06ACE009798A8 /* threadpool.c in Sources */ = {isa = PBXBuildFile; fileRef = 5B0F6AED1AD06ACE009798A8 /* threadpool.c */; };
 		5B8386451ACDA77400D946E0 /* Cola.c in Sources */ = {isa = PBXBuildFile; fileRef = 5B8386431ACDA77400D946E0 /* Cola.c */; };
 		5BA22F0E1ACB363C004F5609 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 5BA22F0D1ACB363C004F5609 /* main.c */; };
 /* End PBXBuildFile section */
@@ -25,8 +25,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		5B0F6AEA1AD0628E009798A8 /* threadpool.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = threadpool.c; sourceTree = "<group>"; };
-		5B0F6AEB1AD0628E009798A8 /* threadpool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = threadpool.h; sourceTree = "<group>"; };
+		5B0F6AED1AD06ACE009798A8 /* threadpool.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = threadpool.c; path = HTTPServer/threadpool.c; sourceTree = "<group>"; };
+		5B0F6AEE1AD06ACE009798A8 /* threadpool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = threadpool.h; path = HTTPServer/threadpool.h; sourceTree = "<group>"; };
 		5B8386431ACDA77400D946E0 /* Cola.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = Cola.c; path = HTTPServer/Cola.c; sourceTree = "<group>"; };
 		5B8386441ACDA77400D946E0 /* Cola.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Cola.h; path = HTTPServer/Cola.h; sourceTree = "<group>"; };
 		5BA22F0A1ACB363C004F5609 /* HTTPServer */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = HTTPServer; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -51,8 +51,8 @@
 				5BA22F0D1ACB363C004F5609 /* main.c */,
 				5B8386431ACDA77400D946E0 /* Cola.c */,
 				5B8386441ACDA77400D946E0 /* Cola.h */,
-				5B0F6AEA1AD0628E009798A8 /* threadpool.c */,
-				5B0F6AEB1AD0628E009798A8 /* threadpool.h */,
+				5B0F6AED1AD06ACE009798A8 /* threadpool.c */,
+				5B0F6AEE1AD06ACE009798A8 /* threadpool.h */,
 				5BA22F0B1ACB363C004F5609 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -128,7 +128,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5B0F6AEC1AD0628E009798A8 /* threadpool.c in Sources */,
+				5B0F6AEF1AD06ACE009798A8 /* threadpool.c in Sources */,
 				5B8386451ACDA77400D946E0 /* Cola.c in Sources */,
 				5BA22F0E1ACB363C004F5609 /* main.c in Sources */,
 			);
