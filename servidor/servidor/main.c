@@ -22,6 +22,11 @@
 
 #define PORT "8080"  // the port users will be connecting to
 
+#define ERROR_501 "Error 501, metodo no implemantado"
+#define ERROR_404 "Error 404, archivo no encontrado"
+
+#define BUFFER_SIZE 512
+
 #define BACKLOG 10     // how many pending connections queue will hold
 
 /* number of threads used to service requests */
@@ -142,6 +147,24 @@ t_request get_request(pthread_mutex_t* p_mutex) {
 }
 
 /*
+ * función process_file(): procesa el archivo dado.
+ * algorithm: lee envia el archivo.
+ * input:     archivo.
+ * output:    none.
+ */
+void process_file(FILE* p_file, int RFD) {
+    char buffer[BUFFER_SIZE];
+    
+    size_t count;
+    while((count = fread(buffer, sizeof(char), BUFFER_SIZE - 1, p_file))) {
+        buffer[count] = '\0';
+        send(RFD, buffer, sizeof(buffer)-1, 0);
+        bzero(buffer, sizeof(buffer));
+    }
+}
+
+
+/*
  * function handle_request(): handle a single given request.
  * algorithm: prints a message stating that the given thread handled
  *            the given request.
@@ -152,11 +175,24 @@ void handle_request(t_request a_request, int thread_id) {
     
     if (a_request) {
         t_datos_request data = (t_datos_request)a_request->valor;
-//        printf("Dirreción: %s\n", data->direccion);
-//        printf("Metodo: %s\n", data->metodo);
-//        printf("Thread '%d' File descriptor '%d'\n", thread_id, data->fileDescriptor);
-//        fflush(stdout);
-        send(data->fileDescriptor, "Esperemos que todo bien\n", 24, 0);
+        
+        /* verifica que sea por el metodo GET */
+        if (strncmp(data->metodo, "GET", 3) == 0) {
+
+            /* busca y abre el archivo */
+            FILE* file = fopen(data->direccion, "r");
+            if (file != NULL) {
+                process_file(file, data->fileDescriptor);
+            } else {
+                /* despliega error 404 en caso de no existir el archivo */
+                send(data->fileDescriptor, ERROR_404, sizeof(ERROR_404)-1, 0);
+            }
+            fclose(file);
+        }
+        else {
+            send(data->fileDescriptor, ERROR_501, sizeof(ERROR_501)-1, 0);
+        }
+        
         close(data->fileDescriptor);
     }
 }
