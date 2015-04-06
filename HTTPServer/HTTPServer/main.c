@@ -6,17 +6,22 @@
 //  Copyright (c) 2015 Esteban Vargas Mora. All rights reserved.
 //
 
-#include <sys/types.h>
+//#include <sys/types.h>
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
+//#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
 #include "Cola.h"
+#include "threadpool.h"
 
+#define Buffer_Size 100
+
+const char* hola = "Esteban Vargas Mora :)"; //texto a imprimir ############### creado por el hilo
 
 //char method[largoBuffer];
 //char url[largoBuffer];
@@ -36,7 +41,7 @@ struct s_request{
 };
 typedef struct s_request* t_request;
 
-void catch_ctrlc(int c) {
+void catch_ctrlc() {
     
     //liberar la memoria
     /*
@@ -45,25 +50,27 @@ void catch_ctrlc(int c) {
     //close(SocketFD); se repite con cada elemento de la cola
 }
 
-//void ingresarRequestCola (int FD, void* buffer, t_cola cola){
-//    char buffer
-//    char method[5];
-//    char url[50];
-//    buffer[99] = '\0';
-//    sscanf(buffer, "%s %s", method, url);
-//    
-//    t_request temp = (t_request) malloc(sizeof(struct s_request));
-//    temp->CFileDescriptor = FD;
-//    temp->dirrecion = url;
-//    temp->metodo = method;
-//}
+void doWork(void* info){
 
+    t_request rTemp = (void*)info;
+    
+    if(strcmp(rTemp->metodo, "GET") == 0){
+        write(rTemp->CFileDescriptor, hola, strlen(hola));
+    } else {
+        write(rTemp->CFileDescriptor, "Error 501", 9);
+    }
+    
+}
 
+pthread_mutex_t mutex_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int main(void) {
     
-    t_cola cola = nuevaCola();                                      // Cola
-    char buffer [100];                                              //Buffer
+    //t_cola cola = nuevaCola();                                        // Cola
+    char buffer [100];                                                  //Buffer
+    struct threadpool *pool;
+    pool = threadpool_init(5);
+    
     
     struct sockaddr_in stSockAddr;
     int SocketFD = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -100,9 +107,15 @@ int main(void) {
 //        return EXIT_FAILURE;
 //    }
     
-    //signal(SIGINT, catch_ctrlc); ############## activarlo cuando se tenga la lista implementada
+//    if(signal(SIGINT, catch_ctrlc)){ //############## activarlo cuando se tenga la lista implementada
+//    
+//        printf("se activó\n");
+//    
+//    }
     
     for(;;) {
+        
+        pthread_mutex_lock(&mutex_lock);
         
         int ConnectFD = accept(SocketFD, NULL, NULL);
         
@@ -112,13 +125,13 @@ int main(void) {
             exit(EXIT_FAILURE);
         }
         
-        int numero = read(ConnectFD, buffer, sizeof(buffer)-1);             //lee el request
+        read(ConnectFD, buffer, sizeof(buffer)-1);                       //lee el request
         
-        printf("numero:%d\n", numero);
+        printf("buffer: %s\n", buffer);
         
         //# parsea la primer linea del request #
         char method[5];
-        char url[50];
+        char url[100];
         buffer[99] = '\0';
         sscanf(buffer, "%s %s", method, url);
         //# parsea la primer linea del request #
@@ -130,23 +143,29 @@ int main(void) {
         temp->metodo = method;
         //# crea el struct s_request #
         
-        //# push a la cola #
-        push((void*) temp, cola);
-        printf("Push correcto\n");
-        //# push a la cola #
+        if(threadpool_add_task(pool, doWork, temp, 1)){
+            printf("Error in Pool_Task\n");
+        } else {
+            printf("Pool Task Added\n");
+        }
         
-        //# prueba de la cola #
-        t_request rTemp = (void*)pop(cola);
-        printf("direccion: %s\nMetodo: %s\n", rTemp->dirrecion, rTemp->metodo);
-        //# prueba de la cola #
+//        //# push a la cola #
+//        push((void*) temp, cola);
+//        printf("Push correcto\n");
+//        //# push a la cola #
+//        
+//        //# prueba de la cola #
+//        t_request rTemp = (void*)pop(cola);
+//        printf("direccion: %s\nMetodo: %s\n", rTemp->dirrecion, rTemp->metodo);
+//        //# prueba de la cola #
         
         /*
          hilos
          */
         
-        const char* hola = "Esteban Vargas Mora :)"; //texto a imprimir ############### creado por el hilo
-        
-        write(ConnectFD, hola, strlen(hola)); //envía a buscador - creado por el hilo
+//        const char* hola = "Esteban Vargas Mora :)"; //texto a imprimir ############### creado por el hilo
+//        
+//        write(ConnectFD, hola, strlen(hola)); //envía a buscador - creado por el hilo
         
         if (shutdown(ConnectFD, SHUT_RDWR) == 1) {
             perror("can not shutdown socket");
@@ -154,6 +173,7 @@ int main(void) {
             close(SocketFD);
             exit(EXIT_FAILURE);
         }
+        pthread_mutex_unlock(&mutex_lock);
         close(ConnectFD);
     }
     

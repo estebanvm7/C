@@ -38,8 +38,7 @@ struct threadpool_queue
 	void* cells[THREAD_POOL_QUEUE_SIZE];
 };
 
-struct threadpool
-{
+struct threadpool {
 	struct threadpool_queue tasks_queue;
 	struct threadpool_queue free_tasks_queue;
 

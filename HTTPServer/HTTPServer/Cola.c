@@ -13,16 +13,12 @@
 
 pthread_mutex_t a_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-t_cola nuevaCola(/*void* valor*/){
-    
-    /*t_nodo nodo = (t_nodo) malloc(sizeof(struct s_nodo));
-     nodo->valor = valor;
-     nodo->next = 0;*/
+t_cola nuevaCola(){
     
     t_cola cola = (t_cola) malloc(sizeof(struct s_cola));
-    cola->primero = 0/*nodo*/;
-    cola->ultimo = 0/*nodo*/;
-    cola->largo = 0/*1*/;
+    cola->primero = 0;
+    cola->ultimo = 0;
+    cola->largo = 0;
     
     return cola;
 }
@@ -30,8 +26,7 @@ t_cola nuevaCola(/*void* valor*/){
 
 void push(void* valor, t_cola cola){
     
-    int mutex;
-    mutex = pthread_mutex_lock(&a_mutex);
+    pthread_mutex_lock(&a_mutex);
     
     if (cola->primero == 0) {
         t_nodo nodo = (t_nodo) malloc(sizeof(struct s_nodo));
@@ -42,7 +37,6 @@ void push(void* valor, t_cola cola){
         cola->ultimo = nodo;
         cola->largo++;
     } else {
-        
         t_nodo nodo = (t_nodo) malloc(sizeof(struct s_nodo));
         nodo->valor = valor;
         nodo->next = 0;
@@ -52,13 +46,12 @@ void push(void* valor, t_cola cola){
         cola->largo++;
     }
     
-    mutex = pthread_mutex_unlock(&a_mutex);
+    pthread_mutex_unlock(&a_mutex);
 }
 
 void* pop(t_cola cola){
     
-    int mutex;
-    mutex = pthread_mutex_lock(&a_mutex);
+    pthread_mutex_lock(&a_mutex);
     
     //Caso con cola vacía//
     if (cola->primero == 0) {
@@ -76,7 +69,7 @@ void* pop(t_cola cola){
     temp->next = 0;
     free(temp);
     
-    mutex = pthread_mutex_unlock(&a_mutex);
+    pthread_mutex_unlock(&a_mutex);
     
     return valorNodo;
 }
