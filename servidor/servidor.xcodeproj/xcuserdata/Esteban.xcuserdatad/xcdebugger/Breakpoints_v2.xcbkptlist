@@ -52,13 +52,11 @@
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "servidor/main.c"
-            timestampString = "449992100.216569"
+            timestampString = "449993389.744784"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "380"
-            endingLineNumber = "380"
-            landmarkName = "main()"
-            landmarkType = "7">
+            startingLineNumber = "47"
+            endingLineNumber = "47">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

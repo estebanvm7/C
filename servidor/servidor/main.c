@@ -42,6 +42,12 @@ pthread_cond_t  got_request = PTHREAD_COND_INITIALIZER;
 
 int num_requests = 0;	/* number of pending requests, initially none */
 
+//#############################
+
+char* direccion_root = "/Users/Esteban/wwwroot";
+
+//#############################
+
 struct s_datos_request {
     int fileDescriptor;
     char* metodo;
@@ -178,16 +184,29 @@ void handle_request(t_request a_request, int thread_id) {
         
         /* verifica que sea por el metodo GET */
         if (strncmp(data->metodo, "GET", 3) == 0) {
-
-            /* busca y abre el archivo */
-            FILE* file = fopen(data->direccion, "r");
-            if (file != NULL) {
-                process_file(file, data->fileDescriptor);
-            } else {
-                /* despliega error 404 en caso de no existir el archivo */
+            
+            if (strcmp(data->direccion, "/") == 0) { /* si no se pide nada */
                 send(data->fileDescriptor, ERROR_404, sizeof(ERROR_404)-1, 0);
             }
-            fclose(file);
+            else {
+                /* concatena la dirrección del request con la ubicación de los archivos */
+                char* local = direccion_root;
+                char* both = malloc(strlen(local) + strlen(data->direccion) + 2);
+                strcpy(both, local);
+                strcat(both, data->direccion);
+
+                /* busca y abre el archivo */
+                FILE* file = fopen(both, "r");
+                free(both);/* libera la memoria */
+                if (file != NULL) {
+                    process_file(file, data->fileDescriptor);
+                }
+                else {
+                    /* despliega error 404 en caso de no existir el archivo */
+                    send(data->fileDescriptor, ERROR_404, sizeof(ERROR_404)-1, 0);
+                }
+                fclose(file);
+            }
         }
         else {
             send(data->fileDescriptor, ERROR_501, sizeof(ERROR_501)-1, 0);
@@ -376,24 +395,11 @@ int main(void) {
         buffer[60] = '\0';
         sscanf(buffer, "%s %s", method, url);
         
-        //
-         char* direccion_root = "/Users/Esteban/wwwroot";
-         //
-        
-        char* first = direccion_root;
-        char* second = url;
-        char* both = malloc(strlen(first) + strlen(second) + 2);
-        
-        strcpy(both, first);
-        strcat(both, url);
-        
         //# crea el struct t_datos_request #
         t_datos_request temp = (t_datos_request) malloc(sizeof(struct s_datos_request));
         temp->fileDescriptor = new_fd;
         temp->metodo = method;
-        temp->direccion = both;
-        
-        free(both);
+        temp->direccion = url;
         
         add_request(temp, &request_mutex, &got_request);
     }
