@@ -340,11 +340,24 @@ int main(void) {
         buffer[60] = '\0';
         sscanf(buffer, "%s %s", method, url);
         
-        //# crea el struct s_request #
+        //
+         char* direccion_root = "/Users/Esteban/wwwroot";
+         //
+        
+        char* first = direccion_root;
+        char* second = url;
+        char* both = malloc(strlen(first) + strlen(second) + 2);
+        
+        strcpy(both, first);
+        strcat(both, url);
+        
+        //# crea el struct t_datos_request #
         t_datos_request temp = (t_datos_request) malloc(sizeof(struct s_datos_request));
         temp->fileDescriptor = new_fd;
         temp->metodo = method;
-        temp->direccion = url;
+        temp->direccion = both;
+        
+        free(both);
         
         add_request(temp, &request_mutex, &got_request);
     }
