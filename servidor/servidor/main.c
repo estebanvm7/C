@@ -6,7 +6,7 @@
 //  Copyright (c) 2015 Esteban Vargas Mora. All rights reserved.
 //
 
-#include <stdio.h>       /* standard I/O routines                     */
+#include <stdio.h>          /* entrada y salida estandar */
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
@@ -16,37 +16,28 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
-#include <pthread.h>     /* pthread functions and data structures     */
-#include <unistd.h>      /* sleep()                                   */
-#include <stdlib.h>      /* rand() and srand() functions              */
+#include <pthread.h>        /* hilos */
+#include <unistd.h>         /* sleep() */
+#include <stdlib.h>         /* rand() and srand() functions */
 
 #define ERROR_501 "Error 501, metodo no implemantado"
 #define ERROR_404 "Error 404, archivo no encontrado"
+#define BUFFER_SIZE 512     /* tamaño del buffer */
+#define BACKLOG 10          /* cantidad conexiones en la cola del socket */
 
-#define BUFFER_SIZE 512
-
-#define BACKLOG 10     // how many pending connections queue will hold
-
-/* global mutex for our program. assignment initializes it. */
-/* note that we use a RECURSIVE mutex, since a handler      */
-/* thread might try to lock it twice consecutively.         */
+/* mutex global */
 pthread_mutex_t request_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER;
 
-/* global condition variable for our program. assignment initializes it. */
+/* variable de condición global */
 pthread_cond_t  got_request = PTHREAD_COND_INITIALIZER;
 
-int num_requests = 0;	/* number of pending requests, initially none */
+int num_requests = 0;           /* numero de requests pendientes */
+char* direccion_root;           /* dirección carpeta local */
+int THREADS;                    /* numero de hilos para realizar los requests */
+char* PORT;                     /* el puerto a conectar */
+volatile sig_atomic_t flag = 0; /* bandera para el control de interupción */
 
-//#############################
-
-char* direccion_root; /* dirección carpeta local */
-
-int THREADS; /* numero de hilos para realizar los requests */
-
-char* PORT;  /* el puerto a conectar */
-
-//#############################
-
+/* struct almacena el metodo, la dirreción y el file decriptor de cada request*/
 struct s_datos_request {
     int fileDescriptor;
     char* metodo;
@@ -54,43 +45,46 @@ struct s_datos_request {
 };
 typedef struct s_datos_request* t_datos_request;
 
-/* format of a single request. */
+/* nodo */
 struct s_request {
-    void* valor;		    /* number of the request                  */
-    struct s_request* next;   /* pointer to next request, NULL if none. */
+    void* valor;                /* información del request (t_datos_request) */
+    struct s_request* next;     /* puntero al proximo nodo */
 };
 typedef struct s_request* t_request;
 
-t_request requests = NULL;     /* head of linked list of requests. */
-t_request last_request = NULL; /* pointer to last request.         */
+t_request requests = NULL;     /* primer nodo en la cola */
+t_request last_request = NULL; /* ultimo nodo en la cola */
+
+//void my_function(int signal){ // can be called asynchronously
+//    flag = 1; // set flag
+//}
 
 /*
- * function add_request(): add a request to the requests list
- * algorithm: creates a request structure, adds to the list, and
- *            increases number of pending requests by one.
- * input:     request number, linked list mutex.
- * output:    none.
+ * función add_request(): agrega un request a la cola
+ * algoritmo:   la estructura del request, lo agrega a la cola, incrementa
+                el numero de request pendientes.
+ * entrada:     valor (t_dato_request) , mutex.
+ * salida:      ninguna.
  */
 void add_request(void* valor, pthread_mutex_t* p_mutex, pthread_cond_t*  p_cond_var) {
     
-    int rc;	                    /* return code of pthreads functions.  */
-    t_request a_request;        /* pointer to newly added request.     */
+    int rc;	                    /* retorna el codigo de la función pthread  */
+    t_request a_request;        /* puntero al nuevo request */
     
-    /* create structure with new request */
+    /* crea un request */
     a_request = (t_request)malloc(sizeof(struct s_request));
-    if (!a_request) { /* malloc failed? */
-        fprintf(stderr, "add_request: out of memory\n");
+    if (!a_request) { /* fallo del malloc */
+        fprintf(stderr, "add_request: memoria agotada\n");
         exit(1);
     }
     a_request->valor = valor;
     a_request->next = NULL;
     
-    /* lock the mutex, to assure exclusive access to the list */
+    /* bloquea el mutex para tener acceso exlusivo */
     rc = pthread_mutex_lock(p_mutex);
     
-    /* add new request to the end of the list, updating list */
-    /* pointers as required */
-    if (num_requests == 0) { /* special case - list is empty */
+    /* agrega el request al final de la cola */
+    if (num_requests == 0) { /* caso especia, cola vacía */
         requests = a_request;
         last_request = a_request;
     }
@@ -99,63 +93,60 @@ void add_request(void* valor, pthread_mutex_t* p_mutex, pthread_cond_t*  p_cond_
         last_request = a_request;
     }
     
-    /* increase total number of pending requests by one. */
+    /* incrementa el numero de request pendientes */
     num_requests++;
     
-    /* unlock mutex */
+    /* desbloquea el mutex */
     rc = pthread_mutex_unlock(p_mutex);
     
-    /* signal the condition variable - there's a new request to handle */
+    /* cambia la variable de condición - nuevo request para procesar */
     rc = pthread_cond_signal(p_cond_var);
 }
 
 /*
- * function get_request(): gets the first pending request from the requests list
- *                         removing it from the list.
- * algorithm: creates a request structure, adds to the list, and
- *            increases number of pending requests by one.
- * input:     request number, linked list mutex.
- * output:    pointer to the removed request, or NULL if none.
- * memory:    the returned request need to be freed by the caller.
+ * función get_request(): obtiene el primer request disponible.
+ * algoritmo:   saca un request de la cola.
+ * entrada:     mutex.
+ * salida:      puntero al request.
  */
 t_request get_request(pthread_mutex_t* p_mutex) {
     
-    int rc;	                    /* return code of pthreads functions.  */
-    t_request a_request;        /* pointer to request.                 */
+    int rc;	                    /* retorna el codigo de la función pthread  */
+    t_request a_request;        /* puntero al nuevo request */
     
-    /* lock the mutex, to assure exclusive access to the list */
+    /* bloquea el mutex para tener acceso exlusivo */
     rc = pthread_mutex_lock(p_mutex);
     
     if (num_requests > 0) {
         a_request = requests;
         requests = a_request->next;
-        if (requests == NULL) { /* this was the last request on the list */
+        if (requests == NULL) {
             last_request = NULL;
         }
-        /* decrease the total number of pending requests */
+        /* decrementa los request pendientes */
         num_requests--;
     }
-    else { /* requests list is empty */
+    else { /* cola vacía */
         a_request = NULL;
     }
     
-    /* unlock mutex */
+    /* desbloquea mutex */
     rc = pthread_mutex_unlock(p_mutex);
     
-    /* return the request to the caller. */
+    /* returna el request */
     return a_request;
 }
 
 /*
  * función process_file(): procesa el archivo dado.
- * algorithm: lee envia el archivo.
- * input:     archivo.
- * output:    none.
+ * algorithm: lee y envía el archivo.
+ * entrada:     archivo.
+ * salida:    none.
  */
 void process_file(FILE* p_file, int RFD) {
     char buffer[BUFFER_SIZE];
-    
     size_t count;
+    
     while((count = fread(buffer, sizeof(char), BUFFER_SIZE - 1, p_file))) {
         buffer[count] = '\0';
         send(RFD, buffer, sizeof(buffer)-1, 0);
@@ -165,11 +156,12 @@ void process_file(FILE* p_file, int RFD) {
 
 
 /*
- * function handle_request(): handle a single given request.
- * algorithm: prints a message stating that the given thread handled
- *            the given request.
- * input:     request pointer, id of calling thread.
- * output:    none.
+ * función handle_request(): ejecuta el request
+ * algorithm:   verifica el metodo del request, concatena la dirección local
+                con el pedido en el request, llama a la función para procesar
+                el archivo
+ * entrada:     puntero a un request, id del hilo.
+ * salida:      ninguna.
  */
 void handle_request(t_request a_request, int thread_id) {
     
@@ -199,41 +191,41 @@ void handle_request(t_request a_request, int thread_id) {
                     /* despliega error 404 en caso de no existir el archivo */
                     send(data->fileDescriptor, ERROR_404, sizeof(ERROR_404)-1, 0);
                 }
+                /* cierra el archivo */
                 fclose(file);
             }
         }
         else {
+            /* envía error de metodo incorrecto */
             send(data->fileDescriptor, ERROR_501, sizeof(ERROR_501)-1, 0);
         }
-        
+        /* cierra la conexión */
         close(data->fileDescriptor);
     }
 }
 
 /*
- * function handle_requests_loop(): infinite loop of requests handling
- * algorithm: forever, if there are requests to handle, take the first
- *            and handle it. Then wait on the given condition variable,
- *            and when it is signaled, re-do the loop.
- *            increases number of pending requests by one.
- * input:     id of thread, for printing purposes.
- * output:    none.
+ * función handle_requests_loop(): loop que llama a ejecutar los request
+ * algoritmo:   infinito, toma el primer request.
+                espea a la variable de condición para repetir el proceso.
+                libera la memoria del request ejecutado.
+ * entrada:
+ * salida:      ninguna.
  */
 void* handle_requests_loop(void* data) {
     
-    int rc;                         /* return code of pthreads functions.  */
-    t_request a_request;            /* pointer to a request.               */
-    int thread_id = *((int*)data);  /* thread identifying number           */
+    int rc;                         /* retorna el codigo de la función pthread  */
+    t_request a_request;            /* puntero al nuevo request */
+    int thread_id = *((int*)data);  /* id hilo */
     
-    /* lock the mutex, to access the requests list exclusively. */
+    /* bloquea el mutex para tener acceso exlusivo */
     rc = pthread_mutex_lock(&request_mutex);
     
-    /* do forever.... */
     while (1) {
 
-        if (num_requests > 0) { /* a request is pending */
+        if (num_requests > 0) { /* si hay requests pendientes */
             a_request = get_request(&request_mutex);
-            if (a_request) { /* got a request - handle it and free it */
+            if (a_request) {
                 handle_request(a_request, thread_id);
                 
                 /* libera la memoria dentro del request (t_datos_request) */
@@ -247,13 +239,9 @@ void* handle_requests_loop(void* data) {
             }
         }
         else {
-            /* wait for a request to arrive. note the mutex will be */
-            /* unlocked here, thus allowing other threads access to */
-            /* requests list.                                       */
+            /* wait for a request to arrive. desbloquea el mutex */
             rc = pthread_cond_wait(&got_request, &request_mutex);
-            /* and after we return from pthread_cond_wait, the mutex  */
-            /* is locked again, so we don't need to lock it ourselves */
-
+            /* bloquea el mutex cunado termina de ejecutar*/
         }
     }
 }
@@ -262,7 +250,7 @@ void sigchld_handler(int s) {
     while(waitpid(-1, NULL, WNOHANG) > 0);
 }
 
-// get sockaddr, IPv4 or IPv6:
+// obtiene sockaddr, IPv4 o IPv6:
 void *get_in_addr(struct sockaddr *sa) {
     
     if (sa->sa_family == AF_INET) {
@@ -271,7 +259,13 @@ void *get_in_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-
+/*
+ * función main(int argc, char * argv[]): ejecuta el socket
+ * entrada:     -R  dirección local de los archivos
+                -W  cantidad de hilos a utilizar
+                -P  puerto a conectar el socket
+ * salida:      ninguna.
+ */
 int main(int argc, char * argv[]) {
 
     for (int i = 1; i < argc; i += 2) {
@@ -290,9 +284,9 @@ int main(int argc, char * argv[]) {
         } else { ;}
     }
     
-    int        i;                    /* loop counter          */
-    int        thr_id[THREADS];      /* thread IDs            */
-    pthread_t  p_threads[THREADS];   /* thread's structures   */
+    int        i;
+    int        thr_id[THREADS];      /* arreglo de los ids de los hilos */
+    pthread_t  p_threads[THREADS];   /* estructura del hilo */
     
     int sockfd, new_fd;  // listen on sock_fd, new connection on new_fd
     struct addrinfo hints, *servinfo, *p;
@@ -308,7 +302,7 @@ int main(int argc, char * argv[]) {
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE; // use my IP
+    hints.ai_flags = AI_PASSIVE;
     
     if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
@@ -322,19 +316,16 @@ int main(int argc, char * argv[]) {
             perror("server: socket");
             continue;
         }
-        
         if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
                        sizeof(int)) == -1) {
             perror("setsockopt");
             exit(1);
         }
-        
         if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             close(sockfd);
             perror("server: bind");
             continue;
         }
-        
         break;
     }
     
@@ -350,7 +341,7 @@ int main(int argc, char * argv[]) {
         exit(1);
     }
     
-    sa.sa_handler = sigchld_handler; // reap all dead processes
+    sa.sa_handler = sigchld_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART;
     if (sigaction(SIGCHLD, &sa, NULL) == -1) {
@@ -358,7 +349,7 @@ int main(int argc, char * argv[]) {
         exit(1);
     }
     
-    /* create the request-handling threads */
+    /* crea los hilos */
     for (i = 0; i < THREADS; i++) {
         thr_id[i] = i;
         pthread_create(&p_threads[i], NULL, handle_requests_loop, (void*)&thr_id[i]);
@@ -366,7 +357,9 @@ int main(int argc, char * argv[]) {
     
     printf("server: waiting for connections...\n");
     
-    while(1) {  // main accept() loop
+//    signal(SIGINT, my_function);
+    
+    while(1) {  /* accept() loop */
         
         sin_size = sizeof their_addr;
         new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
@@ -375,18 +368,50 @@ int main(int argc, char * argv[]) {
             continue;
         }
         
+//        if(flag){ // my action when signal set it 1
+//            
+//            t_request a_request;            /* puntero a un request */
+//            
+//            while (requests != NULL) {
+//                a_request = requests;
+//                
+//                t_datos_request data = (t_datos_request)a_request->valor;
+//                close(data->fileDescriptor);
+//                
+//                /* libera la memoria dentro del request (t_datos_request) */
+//                t_datos_request temp = (t_datos_request)a_request->valor;
+//                free(temp);
+//                temp = NULL;
+//                
+//                /* libera la memoria del request */
+//                free(a_request);
+//                a_request = NULL;
+//                
+//                requests = a_request->next;
+//                if (requests == NULL) { /* this was the last request on the list */
+//                    printf("exit ultimo elemento");
+//                    exit(0);
+//                }
+//                /* decrease the total number of pending requests */
+//                num_requests--;
+//                printf("elemento liberado");
+//            }
+//            printf("exit no hay elementos");
+//            exit(0); /* si no hay nada que liberar */
+//        }
+        
         inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
         printf("server: got connection from %s\n", s);
         
         recv(new_fd, buffer, sizeof(buffer)-1, 0);
         
-        //# parsea la primer linea del request #
+        /* parsea la primer linea del request */
         char method[10];
         char url[50];
         buffer[60] = '\0';
         sscanf(buffer, "%s %s", method, url);
         
-        //# crea el struct t_datos_request #
+        /* crea el struct t_datos_request */
         t_datos_request temp = (t_datos_request) malloc(sizeof(struct s_datos_request));
         temp->fileDescriptor = new_fd;
         temp->metodo = method;
