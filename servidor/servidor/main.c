@@ -20,17 +20,12 @@
 #include <unistd.h>      /* sleep()                                   */
 #include <stdlib.h>      /* rand() and srand() functions              */
 
-#define PORT "8080"  // the port users will be connecting to
-
 #define ERROR_501 "Error 501, metodo no implemantado"
 #define ERROR_404 "Error 404, archivo no encontrado"
 
 #define BUFFER_SIZE 512
 
 #define BACKLOG 10     // how many pending connections queue will hold
-
-/* number of threads used to service requests */
-#define NUM_HANDLER_THREADS 3
 
 /* global mutex for our program. assignment initializes it. */
 /* note that we use a RECURSIVE mutex, since a handler      */
@@ -44,7 +39,11 @@ int num_requests = 0;	/* number of pending requests, initially none */
 
 //#############################
 
-char* direccion_root = "/Users/Esteban/wwwroot";
+char* direccion_root; /* dirección carpeta local */
+
+int THREADS; /* numero de hilos para realizar los requests */
+
+char* PORT;  /* el puerto a conectar */
 
 //#############################
 
@@ -102,11 +101,6 @@ void add_request(void* valor, pthread_mutex_t* p_mutex, pthread_cond_t*  p_cond_
     
     /* increase total number of pending requests by one. */
     num_requests++;
-    
-    //#ifdef DEBUG
-    //    printf("add_request: added request with id '%s'\n", a_request->valor);
-    //    fflush(stdout);
-    //#endif /* DEBUG */
     
     /* unlock mutex */
     rc = pthread_mutex_unlock(p_mutex);
@@ -231,25 +225,12 @@ void* handle_requests_loop(void* data) {
     t_request a_request;            /* pointer to a request.               */
     int thread_id = *((int*)data);  /* thread identifying number           */
     
-    //#ifdef DEBUG
-    //    printf("Starting thread '%d'\n", thread_id);
-    //    fflush(stdout);
-    //#endif /* DEBUG */
-    
     /* lock the mutex, to access the requests list exclusively. */
     rc = pthread_mutex_lock(&request_mutex);
     
-    //#ifdef DEBUG
-    //    printf("thread '%d' after pthread_mutex_lock\n", thread_id);
-    //    fflush(stdout);
-    //#endif /* DEBUG */
-    
     /* do forever.... */
     while (1) {
-        //#ifdef DEBUG
-        //        printf("thread '%d', num_requests =  %d\n", thread_id, num_requests);
-        //        fflush(stdout);
-        //#endif /* DEBUG */
+
         if (num_requests > 0) { /* a request is pending */
             a_request = get_request(&request_mutex);
             if (a_request) { /* got a request - handle it and free it */
@@ -269,17 +250,10 @@ void* handle_requests_loop(void* data) {
             /* wait for a request to arrive. note the mutex will be */
             /* unlocked here, thus allowing other threads access to */
             /* requests list.                                       */
-            //#ifdef DEBUG
-            //            printf("thread '%d' before pthread_cond_wait\n", thread_id);
-            //            fflush(stdout);
-            //#endif /* DEBUG */
             rc = pthread_cond_wait(&got_request, &request_mutex);
             /* and after we return from pthread_cond_wait, the mutex  */
             /* is locked again, so we don't need to lock it ourselves */
-            //#ifdef DEBUG
-            //            printf("thread '%d' after pthread_cond_wait\n", thread_id);
-            //            fflush(stdout);
-            //#endif /* DEBUG */
+
         }
     }
 }
@@ -297,11 +271,28 @@ void *get_in_addr(struct sockaddr *sa) {
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-int main(void) {
+
+int main(int argc, char * argv[]) {
+
+    for (int i = 1; i < argc; i += 2) {
+        char* opcion = argv[i];
+        if (strncmp(opcion, "-R", 2) == 0) {
+            direccion_root = argv[i + 1];
+            printf("Dirección: %s\n", direccion_root);
+        }
+        else if (strncmp(opcion, "-W", 2) == 0) {
+            THREADS = atoi(argv[i + 1]);
+            printf("Hilos: %d\n", THREADS);
+        }
+        else if (strncmp(opcion, "-P", 2) == 0) {
+            PORT = argv[i + 1];
+            printf("Puerto: %s\n", PORT);
+        } else { ;}
+    }
     
-    int        i;                                /* loop counter          */
-    int        thr_id[NUM_HANDLER_THREADS];      /* thread IDs            */
-    pthread_t  p_threads[NUM_HANDLER_THREADS];   /* thread's structures   */
+    int        i;                    /* loop counter          */
+    int        thr_id[THREADS];      /* thread IDs            */
+    pthread_t  p_threads[THREADS];   /* thread's structures   */
     
     int sockfd, new_fd;  // listen on sock_fd, new connection on new_fd
     struct addrinfo hints, *servinfo, *p;
@@ -368,7 +359,7 @@ int main(void) {
     }
     
     /* create the request-handling threads */
-    for (i = 0; i < NUM_HANDLER_THREADS; i++) {
+    for (i = 0; i < THREADS; i++) {
         thr_id[i] = i;
         pthread_create(&p_threads[i], NULL, handle_requests_loop, (void*)&thr_id[i]);
     }
